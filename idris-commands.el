@@ -224,7 +224,6 @@ line."
         (pop-to-buffer buffer)
       (message "No Idris compiler log is currently open"))))
 
-
 (defun idris-load-file-sync ()
   "Pass the current buffer's file synchronously to the inferior
 Idris process. This sets the load position to point, if there is one."
@@ -284,6 +283,39 @@ compiler-annotated output. Does not return a line number."
         (car (idris-thing-at-point))
       ref)))
 
+(defun idris-strip-text-properties (txt)
+  (set-text-properties 0 (length txt) nil txt)
+  txt)
+
+(defun idris-hole-at-point ()
+  "Return a description of the hole at point"
+  (let ((initial-position (point)))
+    (re-search-backward "{-")
+    (re-search-forward idris-hole-pattern)
+    (goto-char initial-position)
+    (let* ((hole-start (match-beginning 1))
+           (hole-end (match-end 1))
+           (mv-start (match-beginning 2))
+           (mv-end (match-end 2)))
+      (if (and (<= hole-start initial-position)
+             (>= mv-end initial-position))
+          (list (idris-strip-text-properties (match-string 1))
+                (idris-strip-text-properties (match-string 2))
+                hole-start hole-end mv-start mv-end)
+        '()))))
+
+(defun idris-next-hole ()
+  "Move the cursor to the next hole"
+  (interactive)
+  (re-search-forward idris-hole-pattern)
+  (goto-char (match-end 1)))
+
+(defun idris-previous-hole ()
+  "Move the cursor to the previous hole"
+  (interactive)
+  (re-search-backward idris-hole-pattern)
+  (goto-char (match-end 1)))
+
 (defun idris-info-for-name (what name)
   "Display the type for a name"
   (let* ((ty (idris-eval (list what name)))
@@ -295,8 +327,11 @@ compiler-annotated output. Does not return a line number."
 (defun idris-type-at-point (thing)
   "Display the type of the name at point, considered as a global variable"
   (interactive "P")
-  (let ((name (if thing (read-string "Check: ")
-                (idris-name-at-point))))
+  (let* ((hole (idris-hole-at-point))
+         (name (if thing (read-string "Check: ")
+                 (if hole
+                     (cadr hole)
+                   (idris-name-at-point)))))
     (when name
       (idris-info-for-name :type-of name))))
 
@@ -429,7 +464,7 @@ compiler-annotated output. Does not return a line number."
           (forward-line))
         (insert prefix)
         (setq final-point (point)) ;; Save the location of the start of the clause
-        (idris-insert-or-expand result)
+        (idris-insert-or-expand result t)
         (newline)
         (goto-char final-point))))) ;; Put the cursor on the start of the inserted clause
 
@@ -454,12 +489,15 @@ compiler-annotated output. Does not return a line number."
         (kill-line)
         (idris-insert-or-expand result)))))
 
-(defun idris-insert-or-expand (str)
+(defun idris-insert-or-expand (raw-str &optional add-holes)
   "If yasnippet is loaded, use it to expand Idris compiler output, otherwise fall back on inserting the output"
-  (if (and (fboundp 'yas-expand-snippet) idris-use-yasnippet-expansions)
-      (let ((snippet (idris-metavar-to-snippet str)))
-        (yas-expand-snippet snippet nil nil '((yas-indent-line nil))))
-    (insert str)))
+  (let ((str (if add-holes
+                 (replace-regexp-in-string "\\?" "{--}?" raw-str)
+               raw-str)))
+    (if (and (fboundp 'yas-expand-snippet) idris-use-yasnippet-expansions)
+        (let ((snippet (idris-metavar-to-snippet str)))
+          (yas-expand-snippet snippet nil nil '((yas-indent-line nil))))
+      (insert str))))
 
 (defun idris-make-lemma ()
   "Extract a lemma from a metavariable"
@@ -564,6 +602,27 @@ prefix argument sets the recursion depth directly."
                 (end (progn (forward-char) (search-forward-regexp "[^a-zA-Z0-9_']") (backward-char) (point))))
             (delete-region start end))
           (idris-insert-or-expand result))))))
+
+(defun idris-refine-hole ()
+  "Refine by some name, without recursive proof search"
+  (interactive)
+  (let ((hole (idris-hole-at-point))
+        (initial-position (point)))
+    (unless hole
+      (error "Could not find a hole at point to refine"))
+    (let* ((val (car hole))
+           (mv (cadr hole))
+           (pos (cddr hole))
+           (result (car (idris-eval `(:refine ,(idris-get-line-num) ,mv ,val)))))
+      (print result)
+      ;; if it's only a meta, just replace the meta; otherwise, replace the hole
+      (if (string-match "^\\?[a-z0-9_]+$" result)
+          (progn (delete-region (- (caddr pos) 1) (cadddr pos))
+                 (goto-char (- (caddr pos) 1))
+                 (idris-insert-or-expand result)
+                 (goto-char initial-position))
+        (delete-region (- (car pos) 2) (cadddr pos))
+        (idris-insert-or-expand result t)))))
 
 (defun idris-refine (name)
   "Refine by some name, without recursive proof search"

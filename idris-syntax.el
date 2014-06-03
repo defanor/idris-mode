@@ -149,6 +149,17 @@
   ;; Backslash \ is not escaping in \(x, y) -> x + y.
   '(("\\(\\\\\\)(" (1 "."))))
 
+(defconst idris-hole-pattern "{-\\(.*?\\)-}\\?\\([a-z0-9_]+\\)")
+
+(defun idris-hole-handler ()
+  (let* ((hole-start (match-beginning 1))
+         (hole-end (match-end 1))
+         (mv-start (match-beginning 2))
+         (mv-end (match-end 2)))
+    (compose-region (- hole-start 2) hole-start ?{)
+    (compose-region hole-end (+ hole-end 3) ?})
+    'idris-metavariable-face))
+
 ;; This should be a function so that it evaluates `idris-lidr-p` at the correct time
 (defun idris-font-lock-defaults ()
   (cl-flet ((line-start (regexp)
@@ -240,6 +251,8 @@
           0 'idris-unsafe-face t)
          ;; TODO: operator definitions.
          ;; TODO: let ... in ...
+         (,idris-hole-pattern
+           (0 (idris-hole-handler)))
          )
       nil nil nil nil
       ;; Special font lock syntactic keywords
