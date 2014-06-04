@@ -489,15 +489,25 @@ compiler-annotated output. Does not return a line number."
         (kill-line)
         (idris-insert-or-expand result)))))
 
-(defun idris-insert-or-expand (raw-str &optional add-holes)
+(defun idris-insert-or-expand (raw-str &optional add-holes add-parens goto-hole)
   "If yasnippet is loaded, use it to expand Idris compiler output, otherwise fall back on inserting the output"
-  (let ((str (if add-holes
-                 (replace-regexp-in-string "\\?" "{--}?" raw-str)
-               raw-str)))
+  (let* ((r-str (if add-holes
+                    (replace-regexp-in-string "\\?" "{--}?" raw-str)
+                  raw-str))
+         (str (if (and add-parens
+                       (string-match "[^\"] [^\"]" r-str))
+                  (concat "(" r-str ")")
+               r-str))
+         (initial-position (point)))
     (if (and (fboundp 'yas-expand-snippet) idris-use-yasnippet-expansions)
         (let ((snippet (idris-metavar-to-snippet str)))
           (yas-expand-snippet snippet nil nil '((yas-indent-line nil))))
-      (insert str))))
+      (insert str)
+      (when (and goto-hole
+                 (not (equal raw-str r-str)))
+        ;; there are new holes
+        (goto-char initial-position)
+        (idris-next-hole)))))
 
 (defun idris-make-lemma ()
   "Extract a lemma from a metavariable"
@@ -614,7 +624,6 @@ prefix argument sets the recursion depth directly."
            (mv (cadr hole))
            (pos (cddr hole))
            (result (car (idris-eval `(:refine ,(idris-get-line-num) ,mv ,val)))))
-      (print result)
       ;; if it's only a meta, just replace the meta; otherwise, replace the hole
       (if (string-match "^\\?[a-z0-9_]+$" result)
           (progn (delete-region (- (caddr pos) 1) (cadddr pos))
@@ -622,7 +631,7 @@ prefix argument sets the recursion depth directly."
                  (idris-insert-or-expand result)
                  (goto-char initial-position))
         (delete-region (- (car pos) 2) (cadddr pos))
-        (idris-insert-or-expand result t)))))
+        (idris-insert-or-expand result t t t)))))
 
 (defun idris-refine (name)
   "Refine by some name, without recursive proof search"
