@@ -620,6 +620,7 @@ prefix argument sets the recursion depth directly."
         (initial-position (point)))
     (unless hole
       (error "Could not find a hole at point to refine"))
+    (idris-load-file-sync)
     (let* ((val (car hole))
            (mv (cadr hole))
            (pos (cddr hole))
