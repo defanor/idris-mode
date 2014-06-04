@@ -224,7 +224,7 @@ line."
         (pop-to-buffer buffer)
       (message "No Idris compiler log is currently open"))))
 
-(defun idris-load-file-sync ()
+(defun idris-load-file-sync (&optional silently)
   "Pass the current buffer's file synchronously to the inferior
 Idris process. This sets the load position to point, if there is one."
   (save-buffer)
@@ -235,7 +235,10 @@ Idris process. This sets the load position to point, if there is one."
         (when (and idris-load-to-here
                    (< (marker-position idris-load-to-here) (point)))
           (idris-load-to (point)))
-        (let ((fn (buffer-file-name)))
+        (let ((fn (if (not silently)
+                      (buffer-file-name)
+                    (write-region '() '() "./temp-tc.idr")
+                    "./temp-tc.idr")))
           (idris-switch-working-directory (file-name-directory fn))
           (setq idris-currently-loaded-buffer nil)
           (let ((result
@@ -252,7 +255,6 @@ Idris process. This sets the load position to point, if there is one."
                 (idris-update-loaded-region (idris-whole-buffer-fc))
               (idris-update-loaded-region (car result))))))
     (error "Cannot find file for current buffer")))
-
 
 (defun idris-get-line-num ()
   "Get the current line number"
@@ -613,8 +615,13 @@ prefix argument sets the recursion depth directly."
             (delete-region start end))
           (idris-insert-or-expand result))))))
 
+(defun idris-load-file-sync-silently ()
+  (condition-case nil
+      (progn (idris-load-file-sync t) t)
+    (error nil)))
+
 (defun idris-refine-hole ()
-  "Refine by some name, without recursive proof search"
+  "Refine by some name or term, without recursive proof search"
   (interactive)
   (let ((hole (idris-hole-at-point))
         (initial-position (point)))
@@ -625,12 +632,20 @@ prefix argument sets the recursion depth directly."
            (mv (cadr hole))
            (pos (cddr hole))
            (result (car (idris-eval `(:refine ,(idris-get-line-num) ,mv ,val)))))
-      ;; if it's only a meta, just replace the meta; otherwise, replace the hole
       (if (string-match "^\\?[a-z0-9_]+$" result)
-          (progn (delete-region (- (caddr pos) 1) (cadddr pos))
-                 (goto-char (- (caddr pos) 1))
-                 (idris-insert-or-expand result)
-                 (goto-char initial-position))
+          ;; error: a meta is returned
+          ;; check if we can replace the hole with a term
+          (progn
+            (delete-region (cadr pos) (cadddr pos))
+            (delete-region (- (car pos) 2) (car pos))
+            ;; fall back if it can't be replaced
+            (unless (idris-load-file-sync-silently)
+              (delete-region (- (car pos) 2) (- (cadr pos) 2))
+              (goto-char (- (car pos) 2))
+              (idris-insert-or-expand result t)
+              (goto-char (car pos))
+              (insert val)))
+        ;; success: replace the hole with result
         (delete-region (- (car pos) 2) (cadddr pos))
         (idris-insert-or-expand result t t t)))))
 
