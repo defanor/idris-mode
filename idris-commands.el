@@ -329,6 +329,7 @@ compiler-annotated output. Does not return a line number."
 (defun idris-type-at-point (thing)
   "Display the type of the name at point, considered as a global variable"
   (interactive "P")
+  (idris-load-file-sync)
   (let* ((hole (idris-hole-at-point))
          (name (if thing (read-string "Check: ")
                  (if hole
