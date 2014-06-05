@@ -164,11 +164,51 @@ out."
   (interactive)
   (idris-load-forward-line -1))
 
+(defun idris-check-metavar (name)
+  "Checks if there's a meta with a given name somewhere in the
+buffer, even if it's commented"
+  (condition-case nil
+      (let ((initial-position (point)))
+        (goto-char 0)
+        (re-search-forward name)
+        (goto-char initial-position)
+        t)
+    (error nil)))
+
+(defun idris-create-metavar ()
+  (while (idris-check-metavar (concat "?mv" (number-to-string idris-mv-index)))
+    (setq idris-mv-index (1+ idris-mv-index)))
+  (concat "mv" (number-to-string idris-mv-index)))
+
+(defun idris-find-new-hole (start)
+  "Searches for '?' marks, starting from a given position"
+  (condition-case nil
+      (save-excursion
+        (goto-char start)
+        (re-search-forward "[^a-zA-Z0-9_]\\?[^a-zA-Z0-9_]")
+        (- (point) 1))
+    (error nil)))
+
+(defun idris-create-holes ()
+  "Replaces '?' marks with fresh holes"
+  (setq idris-mv-index 0)
+  (save-excursion
+    (goto-char 0)
+    (while (idris-find-new-hole (point))
+      (let ((p (idris-find-new-hole (point)))
+            (mv (idris-create-metavar)))
+        (goto-char p)
+        (insert mv)
+        (goto-char (- p 1))
+        (insert "{--}")
+        (goto-char (+ p 4 (length mv)))))))
+
 (defun idris-load-file (set-line)
   "Pass the current buffer's file to the inferior Idris
 process. A prefix argument restricts loading to the current
 line."
   (interactive "p")
+  (idris-create-holes)
   (save-buffer)
   (idris-ensure-process-and-repl-buffer)
   (when (= set-line 4) (idris-load-to (point)))
