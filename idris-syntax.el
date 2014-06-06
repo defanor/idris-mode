@@ -149,7 +149,7 @@
   ;; Backslash \ is not escaping in \(x, y) -> x + y.
   '(("\\(\\\\\\)(" (1 "."))))
 
-(defconst idris-hole-pattern "{-\\(.*?\\)-}\\?\\([a-z0-9_]+\\)")
+(defconst idris-hole-pattern "{-\\(.*?\\)-}\\?\\(['a-z0-9_]+\\)")
 
 (defun idris-hole-handler ()
   (let* ((hole-start (match-beginning 1))

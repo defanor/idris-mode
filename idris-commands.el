@@ -168,10 +168,9 @@ out."
   "Checks if there's a meta with a given name somewhere in the
 buffer, even if it's commented"
   (condition-case nil
-      (let ((initial-position (point)))
+      (save-excursion
         (goto-char 0)
         (re-search-forward name)
-        (goto-char initial-position)
         t)
     (error nil)))
 
@@ -666,8 +665,7 @@ prefix argument sets the recursion depth directly."
 (defun idris-refine-hole ()
   "Refine by some name or term, without recursive proof search"
   (interactive)
-  (let ((hole (idris-hole-at-point))
-        (initial-position (point)))
+  (let ((hole (idris-hole-at-point)))
     (unless hole
       (error "Could not find a hole at point to refine"))
     (idris-load-file-sync)
@@ -681,6 +679,7 @@ prefix argument sets the recursion depth directly."
           (progn
             (delete-region (cadr pos) (cadddr pos))
             (delete-region (- (car pos) 2) (car pos))
+            (goto-char (- (car pos) 1))
             ;; fall back if it can't be replaced
             (unless (idris-load-file-sync-silently)
               (delete-region (- (car pos) 2) (- (cadr pos) 2))
